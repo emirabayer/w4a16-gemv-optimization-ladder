@@ -1,0 +1,244 @@
+{
+  "device": "NVIDIA A100-SXM4-40GB",
+  "peak_bw_gbps": 1555.0,
+  "launch_floor_us": 15.590399503707886,
+  "shapes": [
+    {
+      "rows": 128256,
+      "cols": 2048,
+      "label": "lm_head (real)",
+      "kernels": [
+        {
+          "name": "byte",
+          "ai": 4.0,
+          "ms": 0.1633228874206543,
+          "eff_bw_gbps": 804.1380242178542,
+          "pct_peak": 51.71305621979769,
+          "floor_frac_pct": 9.545753047797438,
+          "trust": true
+        },
+        {
+          "name": "u32",
+          "ai": 4.0,
+          "ms": 0.1348863983154297,
+          "eff_bw_gbps": 973.6648441963524,
+          "pct_peak": 62.61510252066576,
+          "floor_frac_pct": 11.558170207236154,
+          "trust": false
+        },
+        {
+          "name": "u32+v4",
+          "ai": 4.0,
+          "ms": 0.12736512184143067,
+          "eff_bw_gbps": 1031.1625514205587,
+          "pct_peak": 66.31270427141857,
+          "floor_frac_pct": 12.240713374512296,
+          "trust": false
+        },
+        {
+          "name": "champ",
+          "ai": 4.0,
+          "ms": 0.11831808090209961,
+          "eff_bw_gbps": 1110.0090789054493,
+          "pct_peak": 71.38322050838902,
+          "floor_frac_pct": 13.176683888752313,
+          "trust": false
+        },
+        {
+          "name": "marlin",
+          "ai": 4.0,
+          "ms": 0.10748415946960449,
+          "eff_bw_gbps": 1221.893017985967,
+          "pct_peak": 78.57832913093034,
+          "floor_frac_pct": 14.504834554822663,
+          "trust": false
+        },
+        {
+          "name": "uint4 (rej.)",
+          "ai": 4.0,
+          "ms": 0.4566835021972656,
+          "eff_bw_gbps": 287.5824140090567,
+          "pct_peak": 18.49404591698114,
+          "floor_frac_pct": 3.4138302410087,
+          "trust": true
+        },
+        {
+          "name": "h2f32 (lossy)",
+          "ai": 4.0,
+          "ms": 0.10593791961669922,
+          "eff_bw_gbps": 1239.7274222033855,
+          "pct_peak": 79.72523615455856,
+          "floor_frac_pct": 14.71654300944979,
+          "trust": false
+        },
+        {
+          "name": "fp16 (ref)",
+          "ai": 1.0,
+          "ms": 0.36789760589599607,
+          "eff_bw_gbps": 1427.94236108324,
+          "pct_peak": 91.8290907449029,
+          "floor_frac_pct": 4.237700722661201,
+          "trust": true
+        }
+      ]
+    },
+    {
+      "rows": 131072,
+      "cols": 2048,
+      "label": "synthetic",
+      "kernels": [
+        {
+          "name": "byte",
+          "ai": 4.0,
+          "ms": 0.16889856338500978,
+          "eff_bw_gbps": 794.664710640826,
+          "pct_peak": 51.10383991259331,
+          "floor_frac_pct": 9.230628840915042,
+          "trust": true
+        },
+        {
+          "name": "u32",
+          "ai": 4.0,
+          "ms": 0.13857279777526854,
+          "eff_bw_gbps": 968.571971951296,
+          "pct_peak": 62.28758662066212,
+          "floor_frac_pct": 11.250692599128822,
+          "trust": false
+        },
+        {
+          "name": "u32+v4",
+          "ai": 4.0,
+          "ms": 0.12990976333618165,
+          "eff_bw_gbps": 1033.1612078506382,
+          "pct_peak": 66.4412352315523,
+          "floor_frac_pct": 12.00094519713881,
+          "trust": false
+        },
+        {
+          "name": "champ",
+          "ai": 4.0,
+          "ms": 0.12082688331604004,
+          "eff_bw_gbps": 1110.826699460039,
+          "pct_peak": 71.43580060836263,
+          "floor_frac_pct": 12.903088349079534,
+          "trust": false
+        },
+        {
+          "name": "marlin",
+          "ai": 4.0,
+          "ms": 0.1121894359588623,
+          "eff_bw_gbps": 1196.3490755868943,
+          "pct_peak": 76.93563187053982,
+          "floor_frac_pct": 13.896495129385073,
+          "trust": false
+        },
+        {
+          "name": "uint4 (rej.)",
+          "ai": 4.0,
+          "ms": 0.4666316986083984,
+          "eff_bw_gbps": 287.6309697782378,
+          "pct_peak": 18.497168474484745,
+          "floor_frac_pct": 3.341050243736547,
+          "trust": true
+        },
+        {
+          "name": "h2f32 (lossy)",
+          "ai": 4.0,
+          "ms": 0.10809856414794922,
+          "eff_bw_gbps": 1241.6235965567753,
+          "pct_peak": 79.84717662744536,
+          "floor_frac_pct": 14.422392773293518,
+          "trust": false
+        },
+        {
+          "name": "fp16 (ref)",
+          "ai": 1.0,
+          "ms": 0.3757414245605469,
+          "eff_bw_gbps": 1428.8307780487714,
+          "pct_peak": 91.88622366873128,
+          "floor_frac_pct": 4.149236279162414,
+          "trust": true
+        }
+      ]
+    },
+    {
+      "rows": 262144,
+      "cols": 2048,
+      "label": "synthetic-lg",
+      "kernels": [
+        {
+          "name": "byte",
+          "ai": 4.0,
+          "ms": 0.3322623825073242,
+          "eff_bw_gbps": 807.9020380650005,
+          "pct_peak": 51.95511498810292,
+          "floor_frac_pct": 4.69219518203034,
+          "trust": true
+        },
+        {
+          "name": "u32",
+          "ai": 4.0,
+          "ms": 0.2711296081542969,
+          "eff_bw_gbps": 990.0632314831374,
+          "pct_peak": 63.6696611886262,
+          "floor_frac_pct": 5.750164878649314,
+          "trust": true
+        },
+        {
+          "name": "u32+v4",
+          "ai": 4.0,
+          "ms": 0.25782272338867185,
+          "eff_bw_gbps": 1041.1629063250923,
+          "pct_peak": 66.9558139115815,
+          "floor_frac_pct": 6.046945474315354,
+          "trust": true
+        },
+        {
+          "name": "champ",
+          "ai": 4.0,
+          "ms": 0.2399078369140625,
+          "eff_bw_gbps": 1118.9107427789297,
+          "pct_peak": 71.95567477678004,
+          "floor_frac_pct": 6.4984952989645475,
+          "trust": true
+        },
+        {
+          "name": "marlin",
+          "ai": 4.0,
+          "ms": 0.21602304458618163,
+          "eff_bw_gbps": 1242.6241677790474,
+          "pct_peak": 79.91152204366865,
+          "floor_frac_pct": 7.217007580637144,
+          "trust": true
+        },
+        {
+          "name": "uint4 (rej.)",
+          "ai": 4.0,
+          "ms": 0.9270118713378906,
+          "eff_bw_gbps": 289.57067789497245,
+          "pct_peak": 18.621908546300478,
+          "floor_frac_pct": 1.681790706866285,
+          "trust": true
+        },
+        {
+          "name": "h2f32 (lossy)",
+          "ai": 4.0,
+          "ms": 0.21049856185913085,
+          "eff_bw_gbps": 1275.2365319229186,
+          "pct_peak": 82.00878018796904,
+          "floor_frac_pct": 7.406416160762771,
+          "trust": true
+        },
+        {
+          "name": "fp16 (ref)",
+          "ai": 1.0,
+          "ms": 0.7453695678710938,
+          "eff_bw_gbps": 1440.549588128202,
+          "pct_peak": 92.6398448957043,
+          "floor_frac_pct": 2.0916334897112585,
+          "trust": true
+        }
+      ]
+    }
+  ]
+}
