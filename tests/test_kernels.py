@@ -71,6 +71,23 @@ def test_marlin_interleaved(shape):
     assert torch.allclose(out, ref, atol=ATOL, rtol=RTOL), \
         f"marlin {_sid(shape)} max abs err {(out - ref).abs().max().item():.3e}"
 
+@requires_cuda
+@pytest.mark.parametrize("shape", SHAPES, ids=_sid)
+def test_marlin_group128(shape):
+    # group-128 variant: one int4 scale per 128 input weights per row, interleaved
+    # packing, lop3 dequant. Checked against a group-wise dequant reference.
+    rows, cols = shape
+    torch.manual_seed(0)
+    mat = torch.randn(rows, cols, device="cuda").half()
+    vec = torch.randn(cols, device="cuda").half()
+    q, scale_g = K.quantize_int4_group(mat.float(), group=128)
+    packed = K.pack_int4_interleaved(q).cuda()
+    scale_g = scale_g.float().cuda()
+    out = K.w4a16_gemv_g128(packed, scale_g, vec)
+    ref = K.dequant_ref_group(q.cuda(), scale_g, vec, group=128)
+    assert torch.allclose(out, ref, atol=ATOL, rtol=RTOL), \
+        f"marlin_g128 {_sid(shape)} max abs err {(out - ref).abs().max().item():.3e}"
+
 
 @requires_cuda
 @pytest.mark.parametrize("shape", SHAPES, ids=_sid)

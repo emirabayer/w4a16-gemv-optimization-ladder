@@ -32,7 +32,8 @@ KERNELS = [
     ("u32",         0.5, 4.0, "u32",    "simple"),
     ("u32+v4",      0.5, 4.0, "u32_v4", "simple"),
     ("champ",       0.5, 4.0, "champ",  "simple"),
-    ("marlin",      0.5, 4.0, "marlin", "interleaved"),   # SHIPPED
+    ("marlin",      0.5, 4.0, "marlin", "interleaved"),   # SHIPPED (per-row scale)
+    ("marlin-g128", 0.5, 4.0, "marlin_g128", "interleaved"),  # group-128 scale
     ("uint4 (rej.)",0.5, 4.0, "uint4",  "simple"),
     ("h2f32 (lossy)",0.5,4.0, "h2f32",  "simple"),
     ("fp16 (ref)",  2.0, 1.0, "fp16",   "dense"),
@@ -69,12 +70,13 @@ def bench(fn, passes=7, iters=200, warm=50):
     return ts[len(ts) // 2]
 
 
-def call(tag, packed_s, packed_i, scale, vec, mat):
+def call(tag, packed_s, packed_i, packed_g, scale, scale_g, vec, mat):
     if tag == "byte":   return lambda: K.matvec_byte(packed_s, scale, vec)
     if tag == "u32":    return lambda: K.matvec_u32(packed_s, scale, vec)
     if tag == "u32_v4": return lambda: K.matvec_u32_v4(packed_s, scale, vec)
     if tag == "champ":  return lambda: K.matvec_champ(packed_s, scale, vec)
     if tag == "marlin": return lambda: K.w4a16_gemv(packed_i, scale, vec)
+    if tag == "marlin_g128": return lambda: K.w4a16_gemv_g128(packed_g, scale_g, vec)
     if tag == "uint4":  return lambda: K.matvec_uint4(packed_s, scale, vec)
     if tag == "h2f32":  return lambda: K.matvec_h2f32(packed_s, scale, vec)
     if tag == "fp16":   return lambda: K.matvec_fp16(mat, vec)
@@ -109,12 +111,15 @@ def main():
         scale = scale.float().cuda()
         packed_s = K.pack_int4(q).cuda()
         packed_i = K.pack_int4_interleaved(q).cuda()
+        qg, scale_g = K.quantize_int4_group(mat.float(), group=128)
+        packed_g = K.pack_int4_interleaved(qg).cuda()
+        scale_g = scale_g.float().cuda()
 
         entry = {"rows": rows, "cols": cols, "label": label, "kernels": []}
         print(f"=== {rows}x{cols}  ({label}) ===")
         print(f"{'kernel':15s} {'ms':>9s} {'GB/s':>8s} {'%peak':>7s} {'floor%':>7s} {'trust':>6s}")
         for name, bpe, ai, tag, _pk in KERNELS:
-            fn = call(tag, packed_s, packed_i, scale, vec, mat)
+            fn = call(tag, packed_s, packed_i, packed_g, scale, scale_g, vec, mat)
             t = bench(fn)
             bw = rows * cols * bpe / (t * 1e-3) / 1e9
             pct = bw / PEAK_BW * 100

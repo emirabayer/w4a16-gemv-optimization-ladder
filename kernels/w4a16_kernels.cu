@@ -1,16 +1,17 @@
 // w4a16 GEMV kernels for A100 (sm_80). Weight-only int4, fp16 activations.
 //
 // This file is the full optimization ladder, not just the final kernel. Each
-// kernel is a measured rung in taking int4 decode-GEMV from 52% -> ~80% of the
+// kernel is a measured rung in taking int4 decode-GEMV from 52% -> ~81% of the
 // A100's 1555 GB/s peak, at full fp32 accuracy. Kept together so the whole
 // story (including the rejected experiments) is reproducible via the benchmark.
 //
 // Measured on A100-SXM4-40GB, large decode shapes (see benchmarks/):
 //   byte        one 8-bit load / lane, warp-per-row, fp32       ~52% peak   (starting point)
 //   u32         32-bit load / lane (8 int4)                      ~64% peak
-//   u32_v4      + 128-bit float4 vector load (cuts L1 pressure)  ~67% peak
+//   u32_v4      + 128-bit float4 vector load (cuts L1 pressure)  ~68% peak
 //   champ       + fp16 bit-trick dequant, fp32 accumulate        ~72% peak
-//   marlin      + lop3 dequant, interleaved packing (SHIPPED)    ~80% peak
+//   marlin      + lop3 dequant, interleaved packing (SHIPPED)    ~81% peak
+//   marlin_g128 + per-group scale (one per 128 input weights)    ~70% peak
 //
 // Rejected experiments, kept for reproducibility (see README "what didn't work"):
 //   uint4       128-bit weight load (32 int4 / lane)   regressed: too little work/warp
@@ -112,6 +113,30 @@ __global__ void k_marlin(const uint8_t* packed,const float* scale,const half* ve
     p*=s; for(int o=16;o>0;o/=2)p+=__shfl_down_sync(0xffffffff,p,o); if(lane==0)out[wid]=p;
 }
 
+// marlin group-128: one int4 scale per 128 input weights per row. Same interleaved
+// packing and lop3 dequant as per-row marlin, but the scale is fetched per group
+// (group index = uint32 group index g divided by 16, since 128 cols / 8 cols per
+// uint32 = 16). Scale layout is row-major [rows, cols/128]. Keeps more accuracy
+// than per-row (recovers most of the fp16 perplexity) at a small latency cost.
+__global__ void k_marlin_g128(const uint8_t* packed,const float* scale,const half* vec,float* out,int rows,int cols){
+    int wid=(blockIdx.x*blockDim.x+threadIdx.x)/32,lane=threadIdx.x%32; if(wid>=rows)return;
+    int ngs=cols/128;                         // scales per row
+    const float* srow=scale+wid*ngs;
+    float p=0.f; int groups=cols/8;
+    const uint32_t* rp=reinterpret_cast<const uint32_t*>(packed+wid*(cols/2));
+    const float4* v4=reinterpret_cast<const float4*>(vec);
+    const half2 bias=__float2half2_rn(1032.0f); const unsigned MASK=0x000f000fu,EXP=0x64006400u;
+    for(int g=lane;g<groups;g+=32){unsigned val=rp[g];float4 raw=v4[g];half2* hv=reinterpret_cast<half2*>(&raw);
+        float s=srow[g>>4];                   // g/16 == column/128
+        unsigned o0=lop3_ea(val,MASK,EXP),o1=lop3_ea(val>>4,MASK,EXP),o2=lop3_ea(val>>8,MASK,EXP),o3=lop3_ea(val>>12,MASK,EXP);
+        half2 w0=__hsub2(*reinterpret_cast<half2*>(&o0),bias),w1=__hsub2(*reinterpret_cast<half2*>(&o1),bias);
+        half2 w2=__hsub2(*reinterpret_cast<half2*>(&o2),bias),w3=__hsub2(*reinterpret_cast<half2*>(&o3),bias);
+        float2 f0=__half22float2(w0),f1=__half22float2(w1),f2=__half22float2(w2),f3=__half22float2(w3);
+        float2 a=__half22float2(hv[0]),b=__half22float2(hv[1]),c=__half22float2(hv[2]),d=__half22float2(hv[3]);
+        p+= s*(f0.x*a.x+f0.y*a.y+f1.x*b.x+f1.y*b.y+f2.x*c.x+f2.y*c.y+f3.x*d.x+f3.y*d.y);}
+    for(int o=16;o>0;o/=2)p+=__shfl_down_sync(0xffffffff,p,o); if(lane==0)out[wid]=p;
+}
+
 // ============== REJECTED (kept for reproducibility) ==============
 
 // uint4: 128-bit weight load, 32 int4 / lane (simple packing). Regressed: too little work per warp.
@@ -131,7 +156,7 @@ __global__ void k_uint4(const uint8_t* packed,const float* scale,const half* vec
     p*=s; for(int o=16;o>0;o/=2)p+=__shfl_down_sync(0xffffffff,p,o); if(lane==0)out[wid]=p;
 }
 
-// h2f32: fp16 multiply-accumulate (simple packing). ~82% peak but maxerr ~6e-2 (fp16 multiply
+// h2f32: fp16 multiply-accumulate (simple packing). ~79% peak but maxerr ~6e-2 (fp16 multiply
 // rounds each product before summing). Documented speed/accuracy knob, not the default.
 __global__ void k_h2f32(const uint8_t* packed,const float* scale,const half* vec,float* out,int rows,int cols){
     int wid=(blockIdx.x*blockDim.x+threadIdx.x)/32,lane=threadIdx.x%32; if(wid>=rows)return;
@@ -157,13 +182,14 @@ __global__ void k_fp16(const half* mat,const half* vec,float* out,int rows,int c
 // ============== host wrappers ==============
 #define WQ(NM,K) torch::Tensor NM(torch::Tensor pk,torch::Tensor sc,torch::Tensor v){int rows=pk.size(0),cols=pk.size(1)*2;auto o=torch::empty({rows},torch::dtype(torch::kFloat32).device(pk.device()));int t=256,w=t/32,b=(rows+w-1)/w;K<<<b,t>>>(pk.data_ptr<uint8_t>(),sc.data_ptr<float>(),reinterpret_cast<const half*>(v.data_ptr<at::Half>()),o.data_ptr<float>(),rows,cols);return o;}
 WQ(byte_cuda,k_byte) WQ(u32_cuda,k_u32) WQ(u32_v4_cuda,k_u32_v4) WQ(champ_cuda,k_champ)
-WQ(marlin_cuda,k_marlin) WQ(uint4_cuda,k_uint4) WQ(h2f32_cuda,k_h2f32)
+WQ(marlin_cuda,k_marlin) WQ(marlin_g128_cuda,k_marlin_g128) WQ(uint4_cuda,k_uint4) WQ(h2f32_cuda,k_h2f32)
 
 torch::Tensor fp16_cuda(torch::Tensor m,torch::Tensor v){int rows=m.size(0),cols=m.size(1);auto o=torch::empty({rows},m.options().dtype(torch::kFloat32));int t=256,w=t/32,b=(rows+w-1)/w;k_fp16<<<b,t>>>(reinterpret_cast<const half*>(m.data_ptr<at::Half>()),reinterpret_cast<const half*>(v.data_ptr<at::Half>()),o.data_ptr<float>(),rows,cols);return o;}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("byte_cuda",&byte_cuda);       m.def("u32_cuda",&u32_cuda);
     m.def("u32_v4_cuda",&u32_v4_cuda);   m.def("champ_cuda",&champ_cuda);
-    m.def("marlin_cuda",&marlin_cuda);   m.def("uint4_cuda",&uint4_cuda);
+    m.def("marlin_cuda",&marlin_cuda);   m.def("marlin_g128_cuda",&marlin_g128_cuda);
+    m.def("uint4_cuda",&uint4_cuda);
     m.def("h2f32_cuda",&h2f32_cuda);     m.def("fp16_cuda",&fp16_cuda);
 }

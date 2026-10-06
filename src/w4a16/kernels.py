@@ -38,6 +38,7 @@ def matvec_uint4(packed, scale, vec):  return _ext().uint4_cuda(packed, scale, v
 def matvec_h2f32(packed, scale, vec):  return _ext().h2f32_cuda(packed, scale, vec)   # lossy opt-in
 # ---- shipped kernel (interleaved packing) ----
 def w4a16_gemv(packed, scale, vec):    return _ext().marlin_cuda(packed, scale, vec)
+def w4a16_gemv_g128(packed, scale, vec): return _ext().marlin_g128_cuda(packed, scale, vec)  # group-128 variant
 # ---- fp16 dense reference ----
 def matvec_fp16(mat, vec):             return _ext().fp16_cuda(mat, vec)
 
@@ -47,6 +48,16 @@ def quantize_int4_symmetric(w):
     scale = w.abs().max(dim=1, keepdim=True).values / 7.0
     q = torch.round(w / scale).clamp(-8, 7).to(torch.int8)
     return q, scale.squeeze(1)
+
+def quantize_int4_group(w, group=128):
+    """Group-wise symmetric int4: one scale per `group` input weights per row.
+    Returns codes [rows, cols] (int8) and scales [rows, cols/group] (row-major)."""
+    rows, cols = w.shape
+    assert cols % group == 0, f"cols {cols} not divisible by group {group}"
+    wg = w.reshape(rows, cols // group, group)
+    scale = wg.abs().amax(dim=2, keepdim=True) / 7.0
+    q = torch.round(wg / scale).clamp(-8, 7).reshape(rows, cols).to(torch.int8)
+    return q, scale.squeeze(2).reshape(rows, cols // group).contiguous()
 
 
 # ---- packings ----
@@ -84,6 +95,11 @@ def dequant_ref(q, scale, vec):
     """Packing-independent reference: dequantize codes -> dense fp32 matvec."""
     return (q.float() * scale.unsqueeze(1)) @ vec.float()
 
+def dequant_ref_group(q, scale_group, vec, group=128):
+    """Group-wise reference: expand per-group scales to full width, then matvec."""
+    scale_full = scale_group.repeat_interleave(group, dim=1)
+    return (q.float() * scale_full) @ vec.float()
+
 
 # ---- nn.Linear drop-in: marlin kernel on decode (seq==1), dense fp16 on prefill ----
 class W4A16Linear(nn.Module):
@@ -102,7 +118,7 @@ class W4A16Linear(nn.Module):
             vec = x_flat[0].half().contiguous()
             out = w4a16_gemv(self.packed, self.scale, vec)   # marlin
         else:
-            out = x_flat.float() @ self.dense_weight.float().T
+            out = (x_flat @ self.dense_weight.t()).float()
         if self.bias is not None:
             out = out + self.bias.float()
         return out.to(x.dtype).view(*orig_shape[:-1], -1)
